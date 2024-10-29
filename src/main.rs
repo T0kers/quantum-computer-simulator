@@ -1,9 +1,8 @@
 pub mod math;
-use math::vector::Vector;
-
+use math::vector::{Matrix, ColVector, RowVector, ColVectorOperations};
+use math::state_vector::StateVector;
 
 fn main() {
-    let mut a = Vector::from_real([1., 1.]);
-    a = a.normalize();
-    println!("{:?}", a * 4.)
+    let a = StateVector::from_real([1.0, 1.0]);
+    println!("{:?}", a);
 }

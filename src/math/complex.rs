@@ -7,7 +7,9 @@ pub struct Complex {
 }
 
 impl Complex {
+    const EPSILON: f64 = 1e-10;
     pub const ZERO: Self = Complex::new(0., 0.);
+    pub const ONE: Self = Complex::new(1., 0.);
     pub const fn new(re: Real, im: Real) -> Self {
         Complex {
             re, im
@@ -24,6 +26,9 @@ impl Complex {
     }
     pub fn abs_squared(self) -> Real {
         self.re * self.re + self.im * self.im
+    }
+    pub fn is_approx_equal(&self, other: &Self) -> bool {
+        (self.re - other.re).abs() < Self::EPSILON && (self.im - other.im).abs() < Self::EPSILON
     }
 }
 
@@ -50,6 +55,13 @@ impl std::ops::Sub for Complex {
 impl std::ops::SubAssign for Complex {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
+    }
+}
+
+impl std::ops::Neg for Complex {
+    type Output = Complex;
+    fn neg(self) -> Self::Output {
+        Self::new(-self.re, -self.im)
     }
 }
 
