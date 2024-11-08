@@ -1,8 +1,10 @@
 pub mod math;
-use math::vector::{Matrix, ColVector, RowVector, ColVectorOperations};
-use math::state_vector::StateVector;
+use math::state_vector::{StateVector, CNOT, H};
 
 fn main() {
-    let a = StateVector::from_real([1.0, 1.0]);
-    println!("{:?}", a);
+    let mut a = StateVector::zero_state(2);
+    
+    a.apply_1q_gate(&H, 1);
+    a.apply_2q_gate(&CNOT, 0, 1);
+    a.dirac();
 }

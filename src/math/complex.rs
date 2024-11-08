@@ -7,7 +7,7 @@ pub struct Complex {
 }
 
 impl Complex {
-    const EPSILON: f64 = 1e-10;
+    const EPSILON: Real = Real::EPSILON * 1e6;
     pub const ZERO: Self = Complex::new(0., 0.);
     pub const ONE: Self = Complex::new(1., 0.);
     pub const fn new(re: Real, im: Real) -> Self {
@@ -15,7 +15,7 @@ impl Complex {
             re, im
         }
     }
-    pub fn from_real(re: Real) -> Self {
+    pub const fn from_real(re: Real) -> Self {
         Self::new(re, 0.)
     }
     pub fn conj(self) -> Self {
@@ -143,6 +143,23 @@ impl std::ops::DivAssign<Real> for Complex {
         self.re = self.re / rhs;
     }
 }
+
+impl std::fmt::Display for Complex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let re = if self.re.abs() < Self::EPSILON { 0.0 } else { self.re };
+        let im = if self.im.abs() < Self::EPSILON { 0.0 } else { self.im };
+
+        match (re, im) {
+            (0.0, 0.0) => write!(f, "0"),
+            (_, 0.0) => write!(f, "{}", re),
+            (0.0, _) => write!(f, "{}i", im),
+            (_, im) if im < 0.0 => write!(f, "{} - {}i", re, -im),
+            (_, _) => write!(f, "{} + {}i", re, im),
+        }
+    }
+}
+
+
 
 #[cfg(test)]
 mod tests {
