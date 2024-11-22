@@ -1,4 +1,5 @@
-use super::*;
+pub type Real = f64;
+pub use std::f64::consts as RealConsts;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Complex {
@@ -26,6 +27,9 @@ impl Complex {
     }
     pub fn abs_squared(self) -> Real {
         self.re * self.re + self.im * self.im
+    }
+    pub fn exp(self) -> Self {
+        Real::exp(self.re) * Complex::new(Real::cos(self.im), Real::sin(self.im))
     }
     pub fn is_approx_equal(&self, other: &Self) -> bool {
         (self.re - other.re).abs() < Self::EPSILON && (self.im - other.im).abs() < Self::EPSILON
@@ -122,6 +126,13 @@ impl std::ops::Mul<Real> for Complex {
     type Output = Complex;
     fn mul(self, rhs: Real) -> Self::Output {
         Self::new(self.re * rhs, self.im * rhs)
+    }
+}
+
+impl std::ops::Mul<Complex> for Real {
+    type Output = Complex;
+    fn mul(self, rhs: Complex) -> Self::Output {
+        Complex::new(rhs.re * self, rhs.im * self)
     }
 }
 

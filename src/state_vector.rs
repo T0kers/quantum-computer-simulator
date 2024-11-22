@@ -1,4 +1,6 @@
-use crate::math::{complex::Complex, Real, RealConsts};
+use std::usize;
+
+use crate::{circuit::Qubit, numbers::{Complex, Real, RealConsts}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateVector {
@@ -23,11 +25,12 @@ impl StateVector {
     pub fn from_real(elems: Vec<Real>) -> Self {
         StateVector::new(elems.iter().map(|e| Complex::from_real(*e)).collect())
     }
-    fn normalize_mut(&mut self) {
+    fn normalize_mut(&mut self) -> &mut Self {
         let rhs = self.magnitude();
         for n in 0..self.elems.len() {
             self.elems[n] /= rhs;
         }
+        self
     }
     fn magnitude(&self) -> Real {
         self.magnitude_squared().sqrt()
@@ -39,8 +42,8 @@ impl StateVector {
         }
         result
     }
-    pub fn apply_1q_gate(&mut self, gate: &UGate<2>, qubit_index: usize) -> &mut Self {
-        let qubit_mask = 1 << qubit_index;
+    pub fn apply_1q_gate(&mut self, gate: &UGate<2>, qubit: usize) -> &mut Self {
+        let qubit_mask = 1 << qubit;
         let upper_mask = !qubit_mask ^ (qubit_mask - 1);
         let lower_mask = qubit_mask - 1;
         for i in 0..self.elems.len() / 2 {
@@ -55,7 +58,7 @@ impl StateVector {
         }
         self
     }
-    pub fn apply_2q_gate(&mut self, gate: &UGate<4>, qubit0: usize, qubit1: usize) -> &mut Self {
+    pub fn apply_2q_gate(&mut self, gate: &UGate<4>, qubit1: usize, qubit0: usize) -> &mut Self {
         assert_ne!(qubit0, qubit1);
         let qubit0_mask = 1 << qubit0;
         let qubit1_mask = 1 << qubit1;
@@ -68,14 +71,12 @@ impl StateVector {
         let upper_mask = !ms_mask ^ (ms_mask - 1);
         let lower_mask = ls_mask - 1;
         let middle_mask = (!ls_mask ^ (ls_mask - 1)) & (ms_mask - 1);
-        // println!("Masks:\n{:064b}\n{:064b}\n{:064b}\n", upper_mask, middle_mask, lower_mask);
 
         for i in 0..self.elems.len() / 4 {
             let j00 = (i & lower_mask) | ((i << 1) & middle_mask) | ((i << 2) & upper_mask);
             let j01 = j00 | qubit0_mask;
             let j10 = j00 | qubit1_mask;
             let j11 = j01 | j10;
-            // println!("Indexes:\n{:064b}\n{:064b}\n{:064b}\n{:064b}\n", j00, j01, j10, j11);
             let elem00 = self.elems[j00];
             let elem01 = self.elems[j01];
             let elem10 = self.elems[j10];
@@ -119,6 +120,84 @@ impl StateVector {
             }
             true
         }
+    }
+    pub fn measure(&mut self, qubit: usize) -> usize {
+        let mut rng = rand::random::<Real>();
+
+        let qubit_mask = 1 << qubit;
+        let upper_mask = !qubit_mask ^ (qubit_mask - 1);
+        let lower_mask = qubit_mask - 1;
+
+        // first pass to determine outcome
+        let mut outcome = None;
+        for i in 0..self.elems.len() / 2 {
+            let j0 = (i & lower_mask) | ((i << 1) & upper_mask);
+            let j1 = j0 | qubit_mask;
+
+            let prob0 = self.elems[j0].abs_squared();
+            let prob1 = self.elems[j1].abs_squared();
+
+            if prob0 > rng {
+                outcome = Some(0);
+                break;
+            }
+            else {
+                rng -= prob0;
+                if prob1 > rng {
+                    outcome = Some(1);
+                    break;
+                }
+                else {
+                    rng -= prob1;
+                }
+            }
+        }
+        let outcome = outcome.expect("Could not calculate measurement outcome.");
+
+        // second pass to collapse state
+        for i in 0..self.elems.len() / 2 {
+            let j0 = (i & lower_mask) | ((i << 1) & upper_mask);
+            let j1 = j0 | qubit_mask;
+            
+            if (j0 & qubit_mask) >> qubit == outcome {
+                self.elems[j1] = Complex::ZERO;
+            }
+            else {
+                self.elems[j0] = Complex::ZERO;
+            }
+        }
+        self.normalize_mut(); // todo: optimize amount of iterations
+        outcome
+    }
+    pub fn measure_all(&mut self) -> &mut Self {
+        let mut rng = rand::random::<Real>();
+        let mut outcome_found = false;
+        for elem in &mut self.elems {
+            if outcome_found {
+                *elem = Complex::ZERO;
+                continue;
+            }
+            let probability = elem.abs_squared();
+            if probability > rng {
+                outcome_found = true;
+                *elem = Complex::ONE;
+            }
+            else {
+                rng -= probability;
+                *elem = Complex::ZERO;
+            }
+        }
+        self
+    }
+    pub fn meas0(&mut self, qubit: usize) -> &mut Self {
+        self.apply_1q_gate(&MEAS0, qubit);
+        self.normalize_mut();
+        self
+    }
+    pub fn meas1(&mut self, qubit: usize) -> &mut Self {
+        self.apply_1q_gate(&MEAS1, qubit);
+        self.normalize_mut();
+        self
     }
     pub fn tensor(&self, other: &Self) -> Self {
         todo!()
@@ -191,16 +270,63 @@ impl<const N: usize> UGate<N> {
     }
 }
 
-pub const H: UGate<2> = UGate::const_new_from_real([
+pub const PAULI_X: UGate<2> = UGate::const_new_from_real([
+    [0.0, 1.0],
+    [1.0, 0.0],
+]);
+
+pub const PAULI_Y: UGate<2> = UGate::const_new([
+    [Complex::ZERO, Complex::new(0.0, -1.0)],
+    [Complex::new(0.0, 1.0), Complex::ZERO],
+]);
+
+pub const PAULI_Z: UGate<2> = UGate::const_new_from_real([
+    [1.0, 0.0],
+    [0.0, -1.0],
+]);
+
+pub const HADAMARD: UGate<2> = UGate::const_new_from_real([
     [1.0 / RealConsts::SQRT_2, 1.0 / RealConsts::SQRT_2],
     [1.0 / RealConsts::SQRT_2, -1.0 / RealConsts::SQRT_2],
 ]);
+
+pub fn rx(angle: Real) -> UGate<2> {
+    UGate::const_new([
+        [Complex::from_real(Real::cos(angle / 2.0)), Complex::new(0.0, -Real::sin(angle / 2.0))],
+        [Complex::new(0.0, -Real::sin(angle / 2.0)), Complex::from_real(Real::cos(angle / 2.0))],
+    ])
+}
+
+pub fn ry(angle: Real) -> UGate<2> {
+    UGate::const_new_from_real([
+        [Real::cos(angle / 2.0), -Real::sin(angle / 2.0)],
+        [Real::sin(angle / 2.0), Real::cos(angle / 2.0)],
+    ])
+}
+
+pub fn rz(angle: Real) -> UGate<2> {
+    UGate::const_new([
+        [Complex::exp(Complex::new(0.0, -angle / 2.0)), Complex::ZERO],
+        [Complex::ZERO, Complex::exp(Complex::new(0.0, angle / 2.0))],
+    ])
+}
+
 
 pub const CNOT: UGate<4> = UGate::const_new_from_real([
     [1.0, 0.0, 0.0, 0.0],
     [0.0, 1.0, 0.0, 0.0],
     [0.0, 0.0, 0.0, 1.0],
     [0.0, 0.0, 1.0, 0.0],
+]);
+
+const MEAS0: UGate<2> = UGate::const_new_from_real([
+    [1.0, 0.0],
+    [0.0, 0.0],
+]);
+
+const MEAS1: UGate<2> = UGate::const_new_from_real([
+    [0.0, 0.0],
+    [0.0, 1.0],
 ]);
 
 impl<const N: usize> std::ops::Mul<UGate<N>> for UGate<N> {
